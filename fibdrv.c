@@ -4,8 +4,11 @@
 #include <linux/init.h>
 #include <linux/kdev_t.h>
 #include <linux/kernel.h>
+#include <linux/ktime.h>
 #include <linux/module.h>
 #include <linux/mutex.h>
+
+typedef unsigned __int128 uint128_t;
 
 MODULE_LICENSE("Dual MIT/GPL");
 MODULE_AUTHOR("National Cheng Kung University, Taiwan");
@@ -17,26 +20,24 @@ MODULE_VERSION("0.1");
 /* MAX_LENGTH is set to 92 because
  * ssize_t can't fit the number > 92
  */
-#define MAX_LENGTH 92
+#define MAX_LENGTH 200
 
 static dev_t fib_dev = 0;
 static struct cdev *fib_cdev;
 static struct class *fib_class;
 static DEFINE_MUTEX(fib_mutex);
 
-static long long fib_sequence(long long k)
+static uint128_t fib_sequence(long long k)
 {
     /* FIXME: use clz/ctz and fast algorithms to speed up */
-    long long f[k + 2];
-
-    f[0] = 0;
-    f[1] = 1;
-
-    for (int i = 2; i <= k; i++) {
-        f[i] = f[i - 1] + f[i - 2];
+    uint128_t a = 0, b = 1;
+    uint128_t tmp;
+    for (long long i = 0; i < k; i++) {
+        tmp = a;
+        a = a + b;
+        b = tmp;
     }
-
-    return f[k];
+    return a;
 }
 
 static int fib_open(struct inode *inode, struct file *file)
@@ -60,7 +61,9 @@ static ssize_t fib_read(struct file *file,
                         size_t size,
                         loff_t *offset)
 {
-    return (ssize_t) fib_sequence(*offset);
+    uint128_t ret = fib_sequence(*offset);  // uint128 cannot return to user
+    copy_to_user(buf, &ret, sizeof(ret));
+    return 0;
 }
 
 /* write operation is skipped */
