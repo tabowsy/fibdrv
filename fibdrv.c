@@ -22,6 +22,51 @@ MODULE_VERSION("0.1");
  */
 #define MAX_LENGTH 200
 
+/* ktime */
+static ktime_t fib_kt;
+static ktime_t copy_kt;
+static long int fib_kt_ns;
+static long int copy_kt_ns;
+
+static ssize_t kobj_fib_show(struct kobject *kobj,
+                             struct kobj_attribute *attr,
+                             char *buf)
+{
+    fib_kt_ns = ktime_to_ns(fib_kt);
+    return snprintf(buf, 64, "%ld\n", fib_kt_ns);
+}
+
+static ssize_t kobj_copy_show(struct kobject *kobj,
+                              struct kobj_attribute *attr,
+                              char *buf)
+{
+    copy_kt_ns = ktime_to_ns(copy_kt);
+    return snprintf(buf, 64, "%ld\n", copy_kt_ns);
+}
+
+static ssize_t kobj_store(struct kobject *kobj,
+                          struct kobj_attribute *attr,
+                          const char *buf,
+                          size_t count)
+{
+    return count;
+}
+
+struct kobject *kobj_ref;
+static struct kobj_attribute ktime_fib_attr =
+    __ATTR(fib_kt_ns, 0664, kobj_fib_show, kobj_store);
+static struct kobj_attribute ktime_copy_attr =
+    __ATTR(copy_kt_ns, 0664, kobj_copy_show, kobj_store);
+static struct attribute *attrs[] = {
+    &ktime_fib_attr.attr,
+    &ktime_copy_attr.attr,
+    NULL,
+};
+static struct attribute_group attr_group = {
+    .attrs = attrs,
+};
+
+/* device */
 static dev_t fib_dev = 0;
 static struct cdev *fib_cdev;
 static struct class *fib_class;
@@ -61,8 +106,13 @@ static ssize_t fib_read(struct file *file,
                         size_t size,
                         loff_t *offset)
 {
+    fib_kt = ktime_get();
     uint128_t ret = fib_sequence(*offset);  // uint128 cannot return to user
+    fib_kt = ktime_sub(ktime_get(), fib_kt);
+
+    copy_kt = ktime_get();
     copy_to_user(buf, &ret, sizeof(ret));
+    copy_kt = ktime_sub(ktime_get(), copy_kt);
     return 0;
 }
 
@@ -152,6 +202,17 @@ static int __init init_fib_dev(void)
         rc = -4;
         goto failed_device_create;
     }
+
+    /* ktime */
+    kobj_ref = kobject_create_and_add("fib_time", kernel_kobj);
+
+    if (!kobj_ref) {
+        printk(KERN_ALERT "Failed to create kobject");
+        goto failed_device_create;
+    }
+    if (sysfs_create_group(kobj_ref, &attr_group))
+        kobject_put(kobj_ref);
+
     return rc;
 failed_device_create:
     class_destroy(fib_class);
@@ -169,6 +230,8 @@ static void __exit exit_fib_dev(void)
     class_destroy(fib_class);
     cdev_del(fib_cdev);
     unregister_chrdev_region(fib_dev, 1);
+
+    kobject_del(kobj_ref);
 }
 
 module_init(init_fib_dev);
