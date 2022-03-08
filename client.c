@@ -73,9 +73,16 @@ int main()
     int offset = 100; /* TODO: try test something bigger than the limit */
 
     int fd = open(FIB_DEV, O_RDWR);
+    FILE *data = fopen("data.txt", "w");
+
     if (fd < 0) {
         perror("Failed to open character device");
         exit(1);
+    }
+
+    if (!data) {
+        perror("Failed to open data.txt");
+        exit(2);
     }
 
     for (int i = 0; i <= offset; i++) {
@@ -95,9 +102,10 @@ int main()
         long int kernel_time =
             get_ktime(1) + get_ktime(0);  // get kernel fib and copy time
         long int total_time = diff_in_ns(&tt1, &tt2);
-        printf(
-            "[Offset %d] total time: %ld, kernel time: %ld, user time: %ld\n",
-            i, total_time, kernel_time, total_time - kernel_time);
+
+        // record time to data.txt
+        fprintf(data, "%d %ld %ld %ld\n", i, kernel_time, total_time,
+                total_time - kernel_time);
 
         printf("Reading from " FIB_DEV " at offset %d", i);
         printf(", returned the sequence ");

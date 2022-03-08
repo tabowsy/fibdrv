@@ -39,3 +39,11 @@ check: all
 	$(MAKE) unload
 	@diff -u out scripts/expected.txt && $(call pass)
 	@scripts/verify.py
+
+plot: all
+	$(MAKE) unload
+	$(MAKE) load
+	$(shell sudo sh scripts/performance.sh)
+	@python3 scripts/driver.py
+	@gnuplot plot.gp
+	$(MAKE) unload
